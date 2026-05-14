@@ -48,7 +48,7 @@ export default async function handler(req) {
     if (!response.ok) {
       const errorText = await response.text();
       return new Response(JSON.stringify({
-        content: `❌ 接口错误：${errorText}`
+        content: `❌ 接口错误：状态码${response.status}，内容：${errorText}`
       }), {
         headers: { ...headers, 'Content-Type': 'application/json' },
       });
@@ -56,43 +56,59 @@ export default async function handler(req) {
 
     const reader = response.body.getReader();
     const decoder = new TextDecoder('utf-8');
-    const fragments = new Map();
+    const allRawLines = []; // 保存所有原始行
+    const allDataObjects = []; // 保存所有解析后的data对象
+    const allSequenceIds = []; // 保存所有sequence_id
 
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
 
       const chunk = decoder.decode(value, { stream: true });
-      const lines = chunk.split('\n').filter(line => line.trim() !== '');
+      const lines = chunk.split('\n');
 
       for (const line of lines) {
-        if (line.startsWith('data: ')) {
+        const trimmedLine = line.trim();
+        if (trimmedLine === '') continue;
+
+        allRawLines.push(trimmedLine);
+
+        if (trimmedLine.startsWith('data: ')) {
           try {
-            const data = JSON.parse(line.slice(6));
-            if (data.type === 'answer' && data.content?.answer) {
-              fragments.set(data.sequence_id, data.content.answer);
+            const data = JSON.parse(trimmedLine.slice(6));
+            allDataObjects.push(data);
+            if (data.sequence_id) {
+              allSequenceIds.push(data.sequence_id);
             }
           } catch (e) {
-            continue;
+            allRawLines.push(`⚠️ 解析失败的行：${trimmedLine}，错误：${e.message}`);
           }
         }
       }
     }
 
-    // ✅ 正确做法：收集所有存在的id，排序后再拼接
-    const sortedIds = Array.from(fragments.keys()).sort((a, b) => a - b);
-    let fullContent = '';
-    for (const id of sortedIds) {
-      fullContent += fragments.get(id);
-    }
+    // 返回完整的原始数据
+    return new Response(JSON.stringify({
+      content: `
+=== 完整原始数据调试报告 ===
+1. 总原始行数：${allRawLines.length}
+2. 解析成功的data对象数：${allDataObjects.length}
+3. 所有sequence_id：${allSequenceIds.join(', ')}
+4. 排序后的sequence_id：${allSequenceIds.sort((a,b)=>a-b).join(', ')}
 
-    return new Response(JSON.stringify({ content: fullContent }), {
+--- 所有原始行 ---
+${allRawLines.join('\n')}
+
+--- 所有解析后的data对象 ---
+${JSON.stringify(allDataObjects, null, 2)}
+      `
+    }, {
       headers: { ...headers, 'Content-Type': 'application/json' },
     });
 
   } catch (e) {
     return new Response(JSON.stringify({
-      content: `❌ 代理错误：${e.message}`
+      content: `❌ 代理错误：${e.message}，堆栈：${e.stack}`
     }), {
       headers: { ...headers, 'Content-Type': 'application/json' },
     });
