@@ -28,9 +28,7 @@ module.exports = async (req, res) => {
     }
 
     // 先返回测试消息，确保函数能跑通
-    return res.status(200).json({
-      content: `✅ 代理服务完全正常！你发送的是：${text}`
-    });
+
 
     // 等测试成功后，再取消下面的注释，连接Coze
     
