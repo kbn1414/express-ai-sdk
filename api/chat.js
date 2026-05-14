@@ -56,7 +56,8 @@ export default async function handler(req) {
 
     const reader = response.body.getReader();
     const decoder = new TextDecoder('utf-8');
-    let fullContent = '';
+    const fragments = new Map(); // 用Map保存片段，key是sequence_id
+    let maxSequenceId = 0;
 
     while (true) {
       const { done, value } = await reader.read();
@@ -69,14 +70,25 @@ export default async function handler(req) {
         if (line.startsWith('data: ')) {
           try {
             const data = JSON.parse(line.slice(6));
-            // ✅ 正确提取字段：content.answer
             if (data.type === 'answer' && data.content?.answer) {
-              fullContent += data.content.answer;
+              // 按sequence_id保存片段
+              fragments.set(data.sequence_id, data.content.answer);
+              if (data.sequence_id > maxSequenceId) {
+                maxSequenceId = data.sequence_id;
+              }
             }
           } catch (e) {
             continue;
           }
         }
+      }
+    }
+
+    // 按sequence_id从小到大排序拼接
+    let fullContent = '';
+    for (let i = 1; i <= maxSequenceId; i++) {
+      if (fragments.has(i)) {
+        fullContent += fragments.get(i);
       }
     }
 
