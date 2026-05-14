@@ -56,8 +56,7 @@ export default async function handler(req) {
 
     const reader = response.body.getReader();
     const decoder = new TextDecoder('utf-8');
-    const fragments = new Map(); // 用Map保存片段，key是sequence_id
-    let maxSequenceId = 0;
+    const fragments = new Map();
 
     while (true) {
       const { done, value } = await reader.read();
@@ -71,11 +70,7 @@ export default async function handler(req) {
           try {
             const data = JSON.parse(line.slice(6));
             if (data.type === 'answer' && data.content?.answer) {
-              // 按sequence_id保存片段
               fragments.set(data.sequence_id, data.content.answer);
-              if (data.sequence_id > maxSequenceId) {
-                maxSequenceId = data.sequence_id;
-              }
             }
           } catch (e) {
             continue;
@@ -84,12 +79,11 @@ export default async function handler(req) {
       }
     }
 
-    // 按sequence_id从小到大排序拼接
+    // ✅ 正确做法：收集所有存在的id，排序后再拼接
+    const sortedIds = Array.from(fragments.keys()).sort((a, b) => a - b);
     let fullContent = '';
-    for (let i = 1; i <= maxSequenceId; i++) {
-      if (fragments.has(i)) {
-        fullContent += fragments.get(i);
-      }
+    for (const id of sortedIds) {
+      fullContent += fragments.get(id);
     }
 
     return new Response(JSON.stringify({ content: fullContent }), {
