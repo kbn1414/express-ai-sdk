@@ -22,50 +22,76 @@ export default async function handler(req) {
   const { text } = await req.json();
 
   try {
-    // 国际版Coze官方API地址（和你的coze.site对应）
-    const response = await fetch('https://api.coze.com/open_api/v2/chat', {
+    // 完全使用你截图里的官方接口和参数
+    const response = await fetch('https://t8jn2bbr9k.coze.site/stream_run', {
       method: 'POST',
       headers: {
         'Authorization': 'Bearer eyJhbGciOiJSUzI1NiIsImtpZCI6ImIzYjhkYTRlLWYwMzktNGE2ZS1iNjhmLTdiZjAzMjE0YzMwNyJ9.eyJpc3MiOiJodHRwczovL2FwaS5jb3plLmNuIiwiYXVkIjpbImt5cXNiS2swV3BucmE3UjY5bjAxWjR4ZmRqSlRMa3Z5Il0sImV4cCI6ODIxMDI2Njg3Njc5OSwiaWF0IjoxNzc4NzM2NDYxLCJzdWIiOiJzcGlmZmU6Ly9hcGkuY296ZS5jbi93b3JrbG9hZF9pZGVudGl0eS9pZDo3NjM2MzMyMTcwNjkyMjYzOTc4Iiwic3JjIjoiaW5ib3VuZF9hdXRoX2FjY2Vzc190b2tlbl9pZDo3NjM5NjE0OTMwNDEyMzcxOTY4In0.aFVgg_DF9GlKt4X_G_-eMo5XXUix_g1IFAtoEJ3MjL4VIZDz7eiy6k19EPxQ4PdRewtJw0d7NXJAi1E4BF7vuqfYGenAhQPx90ttPmxwpBQf5asF5qkV7vIsDLPAmfd_WT_hcPCQOkYxuFrBgElqmzcpFa44LkXTzBDo6p8O_v3PsEW4YD6ElWLfv4-h3JOI7-RAOVpfsJqykAOTX4gr9jeI1_7c6_Axxcnuv10sK77MO9itH0t-0V6iJwEOa8ytdR9lYGCg6liOh978oxyybGX42mdhXazylyI9lQxR-9xxz3Eh6jXtzAQnoCiSM795Mrle367QOg0wMunl0EjGvg',
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        bot_id: "7636326096509665316", // 你的国际版机器人ID
-        user_id: "visitor_123",
-        query: text,
-        stream: false
+        content: {
+          query: {
+            prompt: [
+              {
+                type: "text",
+                content: { text }
+              }
+            ]
+          },
+          type: "query"
+        },
+        session_id: "test_session_" + Date.now(),
+        project_id: "7636326096509665316"
       })
     });
 
-    // 先打印完整的响应状态和原始内容
     if (!response.ok) {
-      const rawError = await response.text();
+      const errorText = await response.text();
       return new Response(JSON.stringify({
-        content: `❌ API错误：状态码${response.status}，原始内容：${rawError}`
+        content: `❌ 接口错误：${errorText}`
       }), {
         headers: { ...headers, 'Content-Type': 'application/json' },
       });
     }
 
-    const data = await response.json();
-    console.log('Coze返回完整数据:', data); // 打印到Vercel日志
+    // 专门解析SSE流式响应
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder('utf-8');
+    let fullContent = '';
 
-    // 安全访问，避免undefined错误
-    if (data?.messages && data.messages.length > 0) {
-      return new Response(JSON.stringify({ content: data.messages[0].content }), {
-        headers: { ...headers, 'Content-Type': 'application/json' },
-      });
-    } else {
-      return new Response(JSON.stringify({
-        content: `✅ 连接成功！Coze返回空消息，完整数据：${JSON.stringify(data)}`
-      }), {
-        headers: { ...headers, 'Content-Type': 'application/json' },
-      });
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      const chunk = decoder.decode(value, { stream: true });
+      const lines = chunk.split('\n').filter(line => line.trim() !== '');
+
+      for (const line of lines) {
+        // 只处理data行，跳过event行
+        if (line.startsWith('data: ')) {
+          try {
+            const data = JSON.parse(line.slice(6));
+            // 提取answer类型的内容
+            if (data.type === 'answer') {
+              fullContent += data.content;
+            }
+          } catch (e) {
+            // 忽略解析失败的行
+            continue;
+          }
+        }
+      }
     }
+
+    // 返回完整的回复内容
+    return new Response(JSON.stringify({ content: fullContent }), {
+      headers: { ...headers, 'Content-Type': 'application/json' },
+    });
 
   } catch (e) {
     return new Response(JSON.stringify({
-      content: `❌ 代理错误：${e.message}，堆栈：${e.stack}`
+      content: `❌ 代理错误：${e.message}`
     }), {
       headers: { ...headers, 'Content-Type': 'application/json' },
     });
