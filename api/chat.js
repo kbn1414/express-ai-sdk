@@ -22,7 +22,6 @@ export default async function handler(req) {
   const { text } = await req.json();
 
   try {
-    // 完全使用你截图里的官方接口和参数
     const response = await fetch('https://t8jn2bbr9k.coze.site/stream_run', {
       method: 'POST',
       headers: {
@@ -55,7 +54,6 @@ export default async function handler(req) {
       });
     }
 
-    // 专门解析SSE流式响应
     const reader = response.body.getReader();
     const decoder = new TextDecoder('utf-8');
     let fullContent = '';
@@ -68,23 +66,20 @@ export default async function handler(req) {
       const lines = chunk.split('\n').filter(line => line.trim() !== '');
 
       for (const line of lines) {
-        // 只处理data行，跳过event行
         if (line.startsWith('data: ')) {
           try {
             const data = JSON.parse(line.slice(6));
-            // 提取answer类型的内容
-            if (data.type === 'answer') {
-              fullContent += data.content;
+            // ✅ 修复：正确提取text字段，而不是直接拼接对象
+            if (data.type === 'answer' && data.content?.text) {
+              fullContent += data.content.text;
             }
           } catch (e) {
-            // 忽略解析失败的行
             continue;
           }
         }
       }
     }
 
-    // 返回完整的回复内容
     return new Response(JSON.stringify({ content: fullContent }), {
       headers: { ...headers, 'Content-Type': 'application/json' },
     });
