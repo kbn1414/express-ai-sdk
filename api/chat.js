@@ -56,7 +56,7 @@ export default async function handler(req) {
 
     const reader = response.body.getReader();
     const decoder = new TextDecoder('utf-8');
-    let allData = []; // 保存所有返回的原始数据
+    let fullContent = '';
 
     while (true) {
       const { done, value } = await reader.read();
@@ -69,7 +69,10 @@ export default async function handler(req) {
         if (line.startsWith('data: ')) {
           try {
             const data = JSON.parse(line.slice(6));
-            allData.push(data); // 把每一个data都存起来
+            // ✅ 正确提取字段：content.answer
+            if (data.type === 'answer' && data.content?.answer) {
+              fullContent += data.content.answer;
+            }
           } catch (e) {
             continue;
           }
@@ -77,10 +80,7 @@ export default async function handler(req) {
       }
     }
 
-    // 返回所有原始数据，让我们看到真实的格式
-    return new Response(JSON.stringify({
-      content: `✅ 成功！Coze返回了${allData.length}条数据，完整内容：\n${JSON.stringify(allData, null, 2)}`
-    }), {
+    return new Response(JSON.stringify({ content: fullContent }), {
       headers: { ...headers, 'Content-Type': 'application/json' },
     });
 
