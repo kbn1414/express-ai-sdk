@@ -56,9 +56,9 @@ export default async function handler(req) {
 
     const reader = response.body.getReader();
     const decoder = new TextDecoder('utf-8');
-    const allRawLines = []; // 保存所有原始行
-    const allDataObjects = []; // 保存所有解析后的data对象
-    const allSequenceIds = []; // 保存所有sequence_id
+    const allRawLines = [];
+    const allDataObjects = [];
+    const allSequenceIds = [];
 
     while (true) {
       const { done, value } = await reader.read();
@@ -87,28 +87,25 @@ export default async function handler(req) {
       }
     }
 
-    // 返回完整的原始数据
-    return new Response(JSON.stringify({
-      content: `
-=== 完整原始数据调试报告 ===
-1. 总原始行数：${allRawLines.length}
-2. 解析成功的data对象数：${allDataObjects.length}
-3. 所有sequence_id：${allSequenceIds.join(', ')}
-4. 排序后的sequence_id：${allSequenceIds.sort((a,b)=>a-b).join(', ')}
+    // 修复：用普通字符串拼接，避免模板字符串嵌套问题
+    const report = 
+      "=== 完整原始数据调试报告 ===\n" +
+      `1. 总原始行数：${allRawLines.length}\n` +
+      `2. 解析成功的data对象数：${allDataObjects.length}\n` +
+      `3. 所有sequence_id：${allSequenceIds.join(', ')}\n` +
+      `4. 排序后的sequence_id：${allSequenceIds.sort((a,b)=>a-b).join(', ')}\n\n` +
+      "--- 所有原始行 ---\n" +
+      allRawLines.join('\n') + "\n\n" +
+      "--- 所有解析后的data对象 ---\n" +
+      JSON.stringify(allDataObjects, null, 2);
 
---- 所有原始行 ---
-${allRawLines.join('\n')}
-
---- 所有解析后的data对象 ---
-${JSON.stringify(allDataObjects, null, 2)}
-      `
-    }, {
+    return new Response(JSON.stringify({ content: report }), {
       headers: { ...headers, 'Content-Type': 'application/json' },
     });
 
   } catch (e) {
     return new Response(JSON.stringify({
-      content: `❌ 代理错误：${e.message}，堆栈：${e.stack}`
+      content: `❌ 代理错误：${e.message}`
     }), {
       headers: { ...headers, 'Content-Type': 'application/json' },
     });
