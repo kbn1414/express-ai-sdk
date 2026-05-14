@@ -47,67 +47,48 @@ export default async function handler(req) {
 
     if (!response.ok) {
       const errorText = await response.text();
-      return new Response(JSON.stringify({
-        content: `❌ 接口错误：状态码${response.status}，内容：${errorText}`
-      }), {
-        headers: { ...headers, 'Content-Type': 'application/json' },
-      });
+      return new Response(JSON.stringify({ content: `❌ 接口错误：${errorText}` }), { headers });
     }
 
     const reader = response.body.getReader();
     const decoder = new TextDecoder('utf-8');
-    const allRawLines = [];
-    const allDataObjects = [];
-    const allSequenceIds = [];
+    let buffer = ''; // 核心：缓存不完整的流式数据
+    const fragments = new Map();
 
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
 
-      const chunk = decoder.decode(value, { stream: true });
-      const lines = chunk.split('\n');
+      // 拼接缓存 + 新数据，解决分块截断问题
+      buffer += decoder.decode(value, { stream: true });
+      // 按换行符分割完整的行
+      const lines = buffer.split('\n');
+      // 最后一行可能不完整，放回缓存
+      buffer = lines.pop() || '';
 
       for (const line of lines) {
-        const trimmedLine = line.trim();
-        if (trimmedLine === '') continue;
+        const trimmed = line.trim();
+        if (!trimmed.startsWith('data: ')) continue;
 
-        allRawLines.push(trimmedLine);
-
-        if (trimmedLine.startsWith('data: ')) {
-          try {
-            const data = JSON.parse(trimmedLine.slice(6));
-            allDataObjects.push(data);
-            if (data.sequence_id) {
-              allSequenceIds.push(data.sequence_id);
-            }
-          } catch (e) {
-            allRawLines.push(`⚠️ 解析失败的行：${trimmedLine}，错误：${e.message}`);
+        try {
+          // 解析完整的JSON数据
+          const data = JSON.parse(trimmed.slice(6));
+          if (data.type === 'answer' && data.content?.answer) {
+            fragments.set(data.sequence_id, data.content.answer);
           }
+        } catch (e) {
+          continue;
         }
       }
     }
 
-    // 修复：用普通字符串拼接，避免模板字符串嵌套问题
-    const report = 
-      "=== 完整原始数据调试报告 ===\n" +
-      `1. 总原始行数：${allRawLines.length}\n` +
-      `2. 解析成功的data对象数：${allDataObjects.length}\n` +
-      `3. 所有sequence_id：${allSequenceIds.join(', ')}\n` +
-      `4. 排序后的sequence_id：${allSequenceIds.sort((a,b)=>a-b).join(', ')}\n\n` +
-      "--- 所有原始行 ---\n" +
-      allRawLines.join('\n') + "\n\n" +
-      "--- 所有解析后的data对象 ---\n" +
-      JSON.stringify(allDataObjects, null, 2);
+    // 按序号排序，拼接所有内容
+    const sortedIds = Array.from(fragments.keys()).sort((a, b) => a - b);
+    const fullContent = sortedIds.map(id => fragments.get(id)).join('');
 
-    return new Response(JSON.stringify({ content: report }), {
-      headers: { ...headers, 'Content-Type': 'application/json' },
-    });
+    return new Response(JSON.stringify({ content: fullContent }), { headers });
 
   } catch (e) {
-    return new Response(JSON.stringify({
-      content: `❌ 代理错误：${e.message}`
-    }), {
-      headers: { ...headers, 'Content-Type': 'application/json' },
-    });
+    return new Response(JSON.stringify({ content: `❌ 错误：${e.message}` }), { headers });
   }
 }
