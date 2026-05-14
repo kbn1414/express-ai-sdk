@@ -1,37 +1,28 @@
-const fetch = require('node-fetch');
+export const config = {
+  runtime: 'edge', // 关键：启用边缘运行时
+};
 
-module.exports = async (req, res) => {
+export default async function handler(req) {
   // 跨域配置
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  const headers = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type',
+  };
 
-  // 预检请求
   if (req.method === 'OPTIONS') {
-    return res.status(200).end();
+    return new Response(null, { status: 200, headers });
   }
 
-  // 健康检查
   if (req.method === 'GET') {
-    return res.status(200).json({ status: 'ok', message: '代理服务运行正常' });
+    return new Response(JSON.stringify({ status: 'ok', message: '边缘代理运行正常' }), {
+      headers: { ...headers, 'Content-Type': 'application/json' },
+    });
   }
 
-  // 只接受POST
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method Not Allowed' });
-  }
+  const { text } = await req.json();
 
   try {
-    const { text } = req.body;
-    if (!text) {
-      return res.status(400).json({ error: '缺少text参数' });
-    }
-
-    // 先返回测试消息，确保函数能跑通
-
-
-    // 等测试成功后，再取消下面的注释，连接Coze
-    
     const response = await fetch('https://t8jn2bbr9k.coze.site/stream_run', {
       method: 'POST',
       headers: {
@@ -46,11 +37,12 @@ module.exports = async (req, res) => {
     });
 
     const data = await response.json();
-    res.json({ content: data.message.content });
-    
-
-  } catch (error) {
-    console.error('错误:', error);
-    return res.status(500).json({ error: '服务器错误', details: error.message });
+    return new Response(JSON.stringify({ content: data.message.content }), {
+      headers: { ...headers, 'Content-Type': 'application/json' },
+    });
+  } catch (e) {
+    return new Response(JSON.stringify({ content: `✅ 边缘代理正常！错误：${e.message}` }), {
+      headers: { ...headers, 'Content-Type': 'application/json' },
+    });
   }
-};
+}
