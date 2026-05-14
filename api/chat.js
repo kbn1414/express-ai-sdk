@@ -1,9 +1,8 @@
 export const config = {
-  runtime: 'edge', // 关键：启用边缘运行时
+  runtime: 'edge',
 };
 
 export default async function handler(req) {
-  // 跨域配置
   const headers = {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
@@ -36,12 +35,47 @@ export default async function handler(req) {
       })
     });
 
-    const data = await response.json();
-    return new Response(JSON.stringify({ content: data.message.content }), {
-      headers: { ...headers, 'Content-Type': 'application/json' },
-    });
+    // 先检查Coze是否返回了错误状态码
+    if (!response.ok) {
+      const errorText = await response.text();
+      return new Response(JSON.stringify({
+        content: `❌ Coze返回错误：状态码${response.status}，内容：${errorText}`
+      }), {
+        headers: { ...headers, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // 尝试解析JSON
+    let data;
+    try {
+      data = await response.json();
+    } catch (e) {
+      const rawText = await response.text();
+      return new Response(JSON.stringify({
+        content: `❌ Coze返回不是JSON格式：${rawText}`
+      }), {
+        headers: { ...headers, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // 检查是否有message.content
+    if (data?.message?.content) {
+      return new Response(JSON.stringify({ content: data.message.content }), {
+        headers: { ...headers, 'Content-Type': 'application/json' },
+      });
+    } else {
+      // 打印Coze返回的完整内容
+      return new Response(JSON.stringify({
+        content: `✅ 连接Coze成功！但返回格式不对，完整内容：${JSON.stringify(data, null, 2)}`
+      }), {
+        headers: { ...headers, 'Content-Type': 'application/json' },
+      });
+    }
+
   } catch (e) {
-    return new Response(JSON.stringify({ content: `✅ 边缘代理正常！错误：${e.message}` }), {
+    return new Response(JSON.stringify({
+      content: `❌ 代理错误：${e.message}`
+    }), {
       headers: { ...headers, 'Content-Type': 'application/json' },
     });
   }
