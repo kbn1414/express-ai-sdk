@@ -33,7 +33,7 @@ module.exports = async (req, res) => {
     });
 
     // 等测试成功后，再取消下面的注释，连接Coze
-    /*
+    
     const response = await fetch('https://t8jn2bbr9k.coze.site/stream_run', {
       method: 'POST',
       headers: {
@@ -49,7 +49,7 @@ module.exports = async (req, res) => {
 
     const data = await response.json();
     res.json({ content: data.message.content });
-    */
+    
 
   } catch (error) {
     console.error('错误:', error);
