@@ -31,7 +31,8 @@ export default async function handler(req) {
       body: JSON.stringify({
         content: { query: { prompt: [{ type: "text", content: { text } }] }, type: "query" },
         session_id: "test",
-        project_id: "7636326096509665316"
+        project_id: "7636326096509665316",
+        stream: false // 关键：关闭流式响应
       })
     });
 
